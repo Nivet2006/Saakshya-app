@@ -394,10 +394,13 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
           <Animated.View style={{ transform: [{ scale: pulseScale }], width: '100%' }}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={ui.startRecording}
-              onPress={onStartRecording}
+              accessibilityLabel={handsFree ? ui.startRecording : ui.holdToSpeak}
+              onPress={handsFree ? onStartRecording : undefined}
+              onPressIn={!handsFree ? onPttDown : undefined}
+              onPressOut={!handsFree ? onPttUp : undefined}
               style={[
                 styles.startHeroBtn,
+                !handsFree && pttPressed && { backgroundColor: ClinicalColors.danger },
                 interactionState === 'error' && { backgroundColor: ClinicalColors.danger },
                 interactionState === 'completed' && { backgroundColor: ClinicalColors.success },
               ]}
@@ -411,7 +414,13 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
                   <Mic size={26} color={ClinicalColors.white} />
                 )}
               </View>
-              <Text style={styles.startHeroBtnText}>{ui.startRecording}</Text>
+              <Text style={styles.startHeroBtnText}>
+                {handsFree
+                  ? ui.startRecording
+                  : pttPressed
+                  ? ui.speakingShortLabel
+                  : ui.holdToSpeak}
+              </Text>
             </Pressable>
           </Animated.View>
         ) : (

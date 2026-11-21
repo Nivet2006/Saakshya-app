@@ -1,6 +1,12 @@
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import {
+  NativeEventEmitter,
+  NativeModules,
+  Platform,
+  type EmitterSubscription,
+} from 'react-native';
+import {
   fastApiClient,
   FastApiError,
   getVoiceApiBaseUrl,
@@ -184,18 +190,24 @@ export function extractPcm16LeFromWavBytes(wavBytes: Uint8Array): Uint8Array {
   return wavBytes.subarray(WAV_HEADER_BYTES);
 }
 
-/** Converts dBFS metering (-160..0) from expo-av into normalized 0..1 amplitude + 16-band visualizer. */
-export function meteringDbToWaveform(db: number): { level: number; bands: number[] } {
-  const clampedDb = Math.max(-65, Math.min(0, db));
-  const level = Math.max(0, Math.min(1, (clampedDb + 65) / 65));
+/** Converts normalized 0..1 amplitude into 16-band visualizer. */
+export function levelToWaveformBands(level: number): number[] {
+  const clamped = Math.max(0, Math.min(1, level));
   const bands: number[] = [];
   for (let i = 0; i < 16; i++) {
     const phase = Math.sin((i / 16) * Math.PI) * 0.75 + 0.25;
     const jitter = ((i * 7) % 5) * 0.04;
-    const val = level <= 0.03 ? 0.08 : Math.min(1, Math.max(0.1, level * phase + jitter * level));
+    const val = clamped <= 0.03 ? 0.08 : Math.min(1, Math.max(0.1, clamped * phase + jitter * clamped));
     bands.push(Math.round(val * 100) / 100);
   }
-  return { level, bands };
+  return bands;
+}
+
+/** Converts dBFS metering (-160..0) from expo-av into normalized 0..1 amplitude + 16-band visualizer. */
+export function meteringDbToWaveform(db: number): { level: number; bands: number[] } {
+  const clampedDb = Math.max(-65, Math.min(0, db));
+  const level = Math.max(0, Math.min(1, (clampedDb + 65) / 65));
+  return { level, bands: levelToWaveformBands(level) };
 }
 
 export async function checkMicrophonePermission(): Promise<MicPermissionState> {
@@ -292,6 +304,10 @@ export class MobileVoiceClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private lastWsUrl: string | null = null;
+  private isPreparingRecording = false;
+  private pendingStopAfterPrepare = false;
+  private nativePcmActive = false;
+  private nativeLevelSub: EmitterSubscription | null = null;
 
   private activeTurnId = 0;
   private minPlayableTurnId = 0;
@@ -354,16 +370,33 @@ export class MobileVoiceClient {
     return this.sessionId;
   }
 
+  setHandsFreeMode(enabled: boolean): void {
+    this.handsFreeMode = enabled;
+    this.setMicTransmissionActive(enabled);
+  }
+
   setMicTransmissionActive(active: boolean): void {
     const wasActive = this.isMicStreaming;
     this.isMicStreaming = active;
     if (!active) {
       this.callbacks.onAudioLevel(0, new Array(16).fill(0));
-      if (wasActive && this.recording && !this.isRotatingSegment) {
+      if (this.isPreparingRecording) {
+        this.pendingStopAfterPrepare = true;
+        return;
+      }
+      if ((wasActive || this.nativePcmActive || this.recording) && !this.isRotatingSegment) {
+        this.callbacks.onStateChange('transcribing');
         void this.flushCurrentRecordingSegment(false);
       }
-    } else if (!wasActive && !this.recording && this.isConnected() && !this.isClosing) {
-      void this.startRecordingSegment();
+    } else {
+      this.pendingStopAfterPrepare = false;
+      if (this.isPlayingAudio) {
+        this.triggerBargeIn('ptt_press');
+      }
+      if (!this.recording && !this.nativePcmActive && !this.isPreparingRecording && this.isConnected() && !this.isClosing) {
+        this.callbacks.onStateChange('listening');
+        void this.startRecordingSegment();
+      }
     }
   }
 
@@ -570,9 +603,48 @@ export class MobileVoiceClient {
   }
 
   private async startRecordingSegment(): Promise<void> {
-    if (this.isClosing || !this.isMicStreaming || this.recording || this.isRotatingSegment) {
+    if (
+      this.isClosing ||
+      !this.isMicStreaming ||
+      this.recording ||
+      this.nativePcmActive ||
+      this.isRotatingSegment ||
+      this.isPreparingRecording
+    ) {
       return;
     }
+
+    this.isPreparingRecording = true;
+    const nativePcm =
+      Platform.OS === 'android' ? NativeModules.PcmAudioRecorder : undefined;
+
+    if (nativePcm && typeof nativePcm.startRecording === 'function') {
+      try {
+        if (!this.nativeLevelSub) {
+          const emitter = new NativeEventEmitter(nativePcm);
+          this.nativeLevelSub = emitter.addListener('PcmAudioLevel', (ev: { level?: number }) => {
+            if (!this.isMicStreaming || !this.nativePcmActive) return;
+            const lvl = typeof ev?.level === 'number' ? ev.level : 0;
+            this.audioDiag.lastRms = lvl;
+            this.callbacks.onAudioLevel(lvl, levelToWaveformBands(lvl));
+          });
+        }
+        await nativePcm.startRecording();
+        this.nativePcmActive = true;
+        this.speechStartedAtMs = Date.now();
+        this.isPreparingRecording = false;
+        if (this.pendingStopAfterPrepare || !this.isMicStreaming || this.isClosing) {
+          this.pendingStopAfterPrepare = false;
+          void this.flushCurrentRecordingSegment(false);
+        }
+        return;
+      } catch {
+        this.nativePcmActive = false;
+        this.isPreparingRecording = false;
+        // Fallback to expo-av if native AudioRecord fails
+      }
+    }
+
     try {
       const rec = new Audio.Recording();
       await rec.prepareToRecordAsync(WAV_16KHZ_MONO_RECORDING_OPTIONS);
@@ -629,32 +701,68 @@ export class MobileVoiceClient {
 
       await rec.startAsync();
       this.recording = rec;
+      this.isPreparingRecording = false;
+      if (this.pendingStopAfterPrepare || !this.isMicStreaming || this.isClosing) {
+        this.pendingStopAfterPrepare = false;
+        void this.flushCurrentRecordingSegment(false);
+      }
     } catch {
+      this.isPreparingRecording = false;
+      this.pendingStopAfterPrepare = false;
       // ignore if recording already active
     }
   }
 
   private async flushCurrentRecordingSegment(restartAfter: boolean): Promise<void> {
-    if (!this.recording || this.isRotatingSegment) return;
+    if ((!this.recording && !this.nativePcmActive) || this.isRotatingSegment) return;
     this.isRotatingSegment = true;
+
+    if (this.nativePcmActive) {
+      this.nativePcmActive = false;
+      const nativePcm =
+        Platform.OS === 'android' ? NativeModules.PcmAudioRecorder : undefined;
+      try {
+        const b64Pcm: string = nativePcm ? await nativePcm.stopRecording() : '';
+        if (b64Pcm && b64Pcm.length > 0 && this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.speechEndedAtMs = Date.now();
+          this.callbacks.onStateChange('processing');
+          const pcmBytes = base64ToUint8Array(b64Pcm);
+          await this.streamPcmBytesToBackend(pcmBytes);
+        } else if (!this.isClosing) {
+          this.callbacks.onStateChange('listening');
+        }
+      } catch {
+        // ignore
+      } finally {
+        this.isRotatingSegment = false;
+        if (restartAfter && !this.isClosing && this.isMicStreaming && this.isConnected()) {
+          void this.startRecordingSegment();
+        }
+      }
+      return;
+    }
+
     const currentRec = this.recording;
     this.recording = null;
     const hadSpeech = this.speechDetectedInSegment || !this.handsFreeMode;
 
     try {
-      await currentRec.stopAndUnloadAsync();
-      const uri = currentRec.getURI();
-      if (uri && hadSpeech && this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.speechEndedAtMs = Date.now();
-        const b64Wav = await FileSystem.readAsStringAsync(uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        const wavBytes = base64ToUint8Array(b64Wav);
-        const pcmBytes = extractPcm16LeFromWavBytes(wavBytes);
-        await this.streamPcmBytesToBackend(pcmBytes);
-      }
-      if (uri) {
-        void FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+      if (currentRec) {
+        await currentRec.stopAndUnloadAsync();
+        const uri = currentRec.getURI();
+        if (uri && hadSpeech && this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.speechEndedAtMs = Date.now();
+          this.callbacks.onStateChange('processing');
+          const b64Wav = await FileSystem.readAsStringAsync(uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          const wavBytes = base64ToUint8Array(b64Wav);
+          const pcmBytes = extractPcm16LeFromWavBytes(wavBytes);
+          await this.streamPcmBytesToBackend(pcmBytes);
+        }
+        if (uri) {
+          void FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+        }
       }
     } catch {
       // ignore segment stop errors
@@ -696,9 +804,9 @@ export class MobileVoiceClient {
       this.audioDiag.bytesSent += slice.byteLength;
     }
 
-    // Append 750ms of trailing silence (24 frames * 32ms) to trigger endpointing cleanly
+    // Append 960ms of trailing silence (30 frames * 32ms) to trigger endpointing cleanly
     const silenceFrameB64 = uint8ArrayToBase64(new Uint8Array(TARGET_FRAME_BYTES));
-    for (let i = 0; i < 24; i++) {
+    for (let i = 0; i < 30; i++) {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) break;
       this.sendJson({
         schema_version: 'v1',
@@ -1232,6 +1340,22 @@ export class MobileVoiceClient {
 
   private async cleanupAudioOnly(): Promise<void> {
     this.flushAudioPlayback();
+    this.isPreparingRecording = false;
+    this.pendingStopAfterPrepare = false;
+    if (this.nativeLevelSub) {
+      this.nativeLevelSub.remove();
+      this.nativeLevelSub = null;
+    }
+    if (this.nativePcmActive) {
+      this.nativePcmActive = false;
+      const nativePcm =
+        Platform.OS === 'android' ? NativeModules.PcmAudioRecorder : undefined;
+      try {
+        await nativePcm?.stopRecording?.();
+      } catch {
+        // ignore
+      }
+    }
     if (this.recording) {
       const rec = this.recording;
       this.recording = null;

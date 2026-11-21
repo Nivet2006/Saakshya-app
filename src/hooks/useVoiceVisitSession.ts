@@ -166,8 +166,9 @@ export function useVoiceVisitSession(params: {
 
   const [interactionState, setInteractionState] = useState<VoiceInteractionState>('idle');
   const [isConnected, setIsConnected] = useState(false);
-  const [handsFree, setHandsFree] = useState(true);
+  const [handsFree, setHandsFree] = useState(false);
   const [pttPressed, setPttPressed] = useState(false);
+  const pttHoldPendingRef = useRef(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [waveformBands, setWaveformBands] = useState<number[]>(() => new Array(16).fill(0));
   const [sessionId, setSessionId] = useState<string>('');
@@ -311,7 +312,11 @@ export function useVoiceVisitSession(params: {
       },
       onConnectionChange: (connected, reconnecting) => {
         setIsConnected(connected);
-        if (reconnecting) setInteractionState('reconnecting');
+        if (reconnecting) {
+          setInteractionState('reconnecting');
+        } else if (connected && pttHoldPendingRef.current) {
+          clientRef.current?.setMicTransmissionActive(true);
+        }
       },
       onSessionReady: (ev) => {
         setSessionId(ev.session_id);
@@ -699,17 +704,24 @@ export function useVoiceVisitSession(params: {
   const toggleHandsFree = useCallback((nextHandsFree: boolean) => {
     setHandsFree(nextHandsFree);
     setPttPressed(false);
-    clientRef.current?.setMicTransmissionActive(nextHandsFree);
+    pttHoldPendingRef.current = false;
+    clientRef.current?.setHandsFreeMode(nextHandsFree);
   }, []);
 
   const handlePttDown = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setPttPressed(true);
-    clientRef.current?.setMicTransmissionActive(true);
-  }, []);
+    pttHoldPendingRef.current = true;
+    if (!clientRef.current || !clientRef.current.isConnected()) {
+      void startVoiceSession();
+      return;
+    }
+    clientRef.current.setMicTransmissionActive(true);
+  }, [startVoiceSession]);
 
   const handlePttUp = useCallback(() => {
     setPttPressed(false);
+    pttHoldPendingRef.current = false;
     if (!handsFree) {
       clientRef.current?.setMicTransmissionActive(false);
     }
