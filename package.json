@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"src/**/*.{ts,tsx}\" App.tsx --max-warnings 0",
     "test": "jest",
-    "test:live": "jest tests/live-backend.test.ts"
+    "test:live": "jest tests/live-backend.test.ts",
+    "build:apk": "./scripts/build-apk.sh"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "1.23.1",
