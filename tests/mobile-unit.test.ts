@@ -6,9 +6,26 @@ import {
   computeVisitTypeDistribution,
 } from '@/lib/analytics/supervisor-metrics';
 import type { DangerAlertV1, VisitRecordV1 } from '@/lib/contracts/v1';
-import { SYNTHETIC_BENEFICIARIES, SYNTHETIC_PROFILES } from '@/lib/mock-data';
+import { SYNTHETIC_PROFILES } from '@/lib/mock-data';
 import { ClinicalColors, TouchTargets } from '@/theme/tokens';
-import { alertV1ToUi } from '@/types';
+import { alertV1ToUi, type Beneficiary } from '@/types';
+
+const TEST_BENEFICIARY: Beneficiary = {
+  id: 'c0000000-0000-0000-0000-000000001042',
+  beneficiary_id: 'BEN-1042',
+  full_name: 'Test Beneficiary',
+  age_years: 24,
+  gender: 'FEMALE',
+  category: 'PREGNANT_WOMAN',
+  village: 'Test Village',
+  high_risk_status: false,
+  high_risk_reasons: [],
+  assigned_asha_id: 'b0000000-0000-0000-0000-000000000001',
+  phc_id: 'a0000000-0000-0000-0000-000000000001',
+  preferred_language: 'hi-IN',
+  created_at: '2026-01-01T00:00:00.000Z',
+  updated_at: '2026-01-01T00:00:00.000Z',
+};
 
 // Pure audio & protocol utilities tested without native runtime dependencies
 import {
@@ -123,7 +140,7 @@ describe('[UNIT] Mobile Audio Pipeline & Gnani PCM/WAV Framing', () => {
 
 describe('[UNIT] VisitDraft Merging, Selective Voice Correction & Danger Alert Preservation', () => {
   const worker = SYNTHETIC_PROFILES[0];
-  const beneficiary = SYNTHETIC_BENEFICIARIES[0]; // BEN-1042 Lakshmi Devi
+  const beneficiary = TEST_BENEFICIARY;
 
   const baseRecord: VisitRecordV1 = {
     schema_version: 'v1',
@@ -261,15 +278,15 @@ describe('[UNIT] Design Tokens & PHC Supervisor Analytics', () => {
 
   test('computeSupervisorOverview, computeDailyVisitVolume, and buildVisitsCsv aggregate visits accurately', () => {
     const stats = computeSupervisorOverview({
-      beneficiaries: SYNTHETIC_BENEFICIARIES,
+      beneficiaries: [TEST_BENEFICIARY],
       workers: SYNTHETIC_PROFILES,
       visits: [],
       followUps: [],
       immunisations: [],
       dangerAlerts: [],
     });
-    expect(stats.totalBeneficiaries).toBe(SYNTHETIC_BENEFICIARIES.length);
-    expect(stats.activeAshaWorkers).toBe(3);
+    expect(stats.totalBeneficiaries).toBe(1);
+    expect(stats.activeAshaWorkers).toBe(1);
 
     const daily = computeDailyVisitVolume([], 7);
     expect(daily).toHaveLength(7);

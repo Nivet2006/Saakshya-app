@@ -1,21 +1,22 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { fastApiClient } from '@/lib/api/fastapi-client';
 import {
-  SYNTHETIC_AUDIT_LOGS,
-  SYNTHETIC_BENEFICIARIES,
-  SYNTHETIC_DANGER_ALERTS,
-  SYNTHETIC_FOLLOW_UPS,
-  SYNTHETIC_IMMUNISATIONS,
-  SYNTHETIC_INITIAL_VISITS,
-  SYNTHETIC_PROFILES,
-} from '@/lib/mock-data';
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  onSnapshot,
+  setDoc,
+  updateDoc,
+} from 'firebase/firestore';
+import { fastApiClient } from '@/lib/api/fastapi-client';
+import { FIRESTORE_COLLECTIONS, firestoreDb } from '@/lib/firebase/config';
+import { SYNTHETIC_PROFILES } from '@/lib/mock-data';
 import {
   cacheBeneficiariesLocally,
   clearWorkerLocalData,
   getAllLocalDrafts,
   getCachedBeneficiariesLocally,
 } from '@/lib/offline/offline-store';
-import { isRealSupabaseConfigured, supabase } from '@/lib/supabase/client';
 import type {
   AuditLogEntry,
   Beneficiary,
@@ -27,57 +28,76 @@ import type {
   VisitDraft,
 } from '@/types';
 
-const STORAGE_VISITS_KEY = 'sakshya_mobile_visits_v3';
-const STORAGE_ALERTS_KEY = 'sakshya_mobile_alerts_v3';
-const STORAGE_FOLLOWUPS_KEY = 'sakshya_mobile_followups_v2';
-const STORAGE_AUDIT_KEY = 'sakshya_mobile_audit_v2';
-const STORAGE_CUSTOM_BENEFICIARIES_KEY = 'sakshya_mobile_custom_beneficiaries_v1';
+const STORAGE_VISITS_KEY = 'sakshya_mobile_visits_v4';
+const STORAGE_ALERTS_KEY = 'sakshya_mobile_alerts_v4';
+const STORAGE_FOLLOWUPS_KEY = 'sakshya_mobile_followups_v4';
+const STORAGE_AUDIT_KEY = 'sakshya_mobile_audit_v4';
+const STORAGE_BENEFICIARIES_KEY = 'sakshya_mobile_beneficiaries_v4';
+
+function stripUndefined<T>(obj: T): T {
+  return JSON.parse(JSON.stringify(obj)) as T;
+}
 
 class DataService {
-  private beneficiaries: Beneficiary[] = [...SYNTHETIC_BENEFICIARIES];
+  private beneficiaries: Beneficiary[] = [];
   private profiles: UserProfile[] = [...SYNTHETIC_PROFILES];
-  private visits: VisitDraft[] = [...SYNTHETIC_INITIAL_VISITS];
-  private dangerAlerts: DangerAlert[] = [...SYNTHETIC_DANGER_ALERTS];
-  private followUps: FollowUpTask[] = [...SYNTHETIC_FOLLOW_UPS];
-  private immunisations: ImmunisationScheduleItem[] = [...SYNTHETIC_IMMUNISATIONS];
-  private auditLogs: AuditLogEntry[] = [...SYNTHETIC_AUDIT_LOGS];
+  private visits: VisitDraft[] = [];
+  private dangerAlerts: DangerAlert[] = [];
+  private followUps: FollowUpTask[] = [];
+  private immunisations: ImmunisationScheduleItem[] = [];
+  private auditLogs: AuditLogEntry[] = [];
   private hydrated = false;
 
   async hydrateFromStorage(): Promise<void> {
-    if (this.hydrated) return;
-    this.hydrated = true;
-    try {
-      const [v, a, f, aud, customBensRaw] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_VISITS_KEY),
-        AsyncStorage.getItem(STORAGE_ALERTS_KEY),
-        AsyncStorage.getItem(STORAGE_FOLLOWUPS_KEY),
-        AsyncStorage.getItem(STORAGE_AUDIT_KEY),
-        AsyncStorage.getItem(STORAGE_CUSTOM_BENEFICIARIES_KEY),
-      ]);
-      if (v) this.visits = JSON.parse(v);
-      if (a) this.dangerAlerts = JSON.parse(a);
-      if (f) this.followUps = JSON.parse(f);
-      if (aud) this.auditLogs = JSON.parse(aud);
-      if (customBensRaw) {
-        const customBens = JSON.parse(customBensRaw) as Beneficiary[];
-        for (const cb of customBens) {
-          if (
-            cb?.beneficiary_id &&
-            !this.beneficiaries.some(
-              (b) => b.beneficiary_id.toUpperCase() === cb.beneficiary_id.toUpperCase()
-            )
-          ) {
-            this.beneficiaries.push(cb);
-          }
-        }
+    if (!this.hydrated) {
+      this.hydrated = true;
+      try {
+        const [v, a, f, aud, bensRaw] = await Promise.all([
+          AsyncStorage.getItem(STORAGE_VISITS_KEY),
+          AsyncStorage.getItem(STORAGE_ALERTS_KEY),
+          AsyncStorage.getItem(STORAGE_FOLLOWUPS_KEY),
+          AsyncStorage.getItem(STORAGE_AUDIT_KEY),
+          AsyncStorage.getItem(STORAGE_BENEFICIARIES_KEY),
+        ]);
+        if (v) this.visits = JSON.parse(v);
+        if (a) this.dangerAlerts = JSON.parse(a);
+        if (f) this.followUps = JSON.parse(f);
+        if (aud) this.auditLogs = JSON.parse(aud);
+        if (bensRaw) this.beneficiaries = JSON.parse(bensRaw);
+      } catch {
+        // ignore local storage errors
       }
+    }
+
+    await this.syncFromFirebase();
+  }
+
+  async syncFromFirebase(): Promise<void> {
+    try {
+      const [benSnap, visitSnap, alertSnap, fuSnap, auditSnap] = await Promise.all([
+        getDocs(collection(firestoreDb, FIRESTORE_COLLECTIONS.beneficiaries)),
+        getDocs(collection(firestoreDb, FIRESTORE_COLLECTIONS.visits)),
+        getDocs(collection(firestoreDb, FIRESTORE_COLLECTIONS.dangerAlerts)),
+        getDocs(collection(firestoreDb, FIRESTORE_COLLECTIONS.followUpTasks)),
+        getDocs(collection(firestoreDb, FIRESTORE_COLLECTIONS.auditLogs)),
+      ]);
+
+      this.beneficiaries = benSnap.docs.map((d) => d.data() as Beneficiary);
+      this.visits = visitSnap.docs.map((d) => d.data() as VisitDraft);
+      this.dangerAlerts = alertSnap.docs.map((d) => d.data() as DangerAlert);
+      this.followUps = fuSnap.docs.map((d) => d.data() as FollowUpTask);
+      this.auditLogs = auditSnap.docs.map((d) => d.data() as AuditLogEntry);
+
+      await cacheBeneficiariesLocally(this.beneficiaries).catch(() => {});
+      this.persistStorage();
     } catch {
-      // ignore storage errors
+      // Offline — keep cached AsyncStorage records
     }
   }
 
   private persistStorage(): void {
     void Promise.all([
+      AsyncStorage.setItem(STORAGE_BENEFICIARIES_KEY, JSON.stringify(this.beneficiaries)),
       AsyncStorage.setItem(STORAGE_VISITS_KEY, JSON.stringify(this.visits)),
       AsyncStorage.setItem(STORAGE_ALERTS_KEY, JSON.stringify(this.dangerAlerts)),
       AsyncStorage.setItem(STORAGE_FOLLOWUPS_KEY, JSON.stringify(this.followUps)),
@@ -86,77 +106,34 @@ class DataService {
   }
 
   clearAllDangerAlerts(): void {
+    const existingIds = this.dangerAlerts.map((a) => a.alert_id);
     this.dangerAlerts = [];
     void AsyncStorage.removeItem(STORAGE_ALERTS_KEY).catch(() => {});
     this.persistStorage();
+    for (const id of existingIds) {
+      void deleteDoc(doc(firestoreDb, FIRESTORE_COLLECTIONS.dangerAlerts, id)).catch(() => {});
+    }
   }
 
   async clearAllVisits(): Promise<void> {
+    const existingIds = this.visits.map((v) => v.visit_id || v.draft_id);
     this.visits = [];
     await AsyncStorage.removeItem(STORAGE_VISITS_KEY).catch(() => {});
     await clearWorkerLocalData();
     this.persistStorage();
+    for (const id of existingIds) {
+      void deleteDoc(doc(firestoreDb, FIRESTORE_COLLECTIONS.visits, id)).catch(() => {});
+    }
   }
 
   async refreshBeneficiaries(): Promise<Beneficiary[]> {
     await this.hydrateFromStorage();
-    try {
-      const backendList = await fastApiClient.listBeneficiaries();
-      if (backendList.beneficiaries?.length) {
-        const merged = backendList.beneficiaries.map((b) => {
-          const existing = this.beneficiaries.find(
-            (cur) => cur.beneficiary_id.toUpperCase() === b.beneficiary_id.toUpperCase()
-          );
-          if (existing) {
-            return {
-              ...existing,
-              full_name: b.full_name,
-              village: b.village,
-              preferred_language: b.preferred_language,
-            };
-          }
-          return {
-            id: `c0000000-0000-0000-0000-${b.beneficiary_id.replace('BEN-', '').padStart(12, '0')}`,
-            beneficiary_id: b.beneficiary_id,
-            full_name: b.full_name,
-            age_years: b.category === 'newborn' || b.category === 'infant' ? 0 : 25,
-            gender: 'FEMALE' as const,
-            category: mapBackendCategory(b.category),
-            village: b.village,
-            high_risk_status: false,
-            high_risk_reasons: [],
-            assigned_asha_id: 'b0000000-0000-0000-0000-000000000001',
-            phc_id: 'a0000000-0000-0000-0000-000000000001',
-            preferred_language: b.preferred_language,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-        });
-        const mergedIds = new Set(merged.map((m) => m.beneficiary_id.toUpperCase()));
-        const localExtras = this.beneficiaries.filter(
-          (b) => !mergedIds.has(b.beneficiary_id.toUpperCase())
-        );
-        this.beneficiaries = [...merged, ...localExtras];
-        await cacheBeneficiariesLocally(this.beneficiaries);
-      }
-    } catch {
+    if (this.beneficiaries.length === 0) {
       const cached = await getCachedBeneficiariesLocally();
       if (cached.length > 0) {
         this.beneficiaries = cached;
       }
     }
-
-    if (supabase && isRealSupabaseConfigured) {
-      try {
-        const { data } = await supabase.from('beneficiaries').select('*').order('beneficiary_id');
-        if (data && data.length > 0) {
-          this.beneficiaries = data as unknown as Beneficiary[];
-        }
-      } catch {
-        // fallback already populated
-      }
-    }
-
     return [...this.beneficiaries];
   }
 
@@ -197,10 +174,10 @@ class DataService {
       });
       backendId = res.beneficiary?.beneficiary_id || null;
     } catch {
-      // Offline / backend unreachable — still register locally
+      // Offline / backend unreachable — still register in Firebase + local
     }
 
-    let maxNum = 1056;
+    let maxNum = 1000;
     for (const b of this.beneficiaries) {
       const m = /^BEN-(\d+)$/i.exec(b.beneficiary_id);
       if (m) maxNum = Math.max(maxNum, Number.parseInt(m[1], 10));
@@ -208,7 +185,7 @@ class DataService {
     const benId = backendId || `BEN-${maxNum + 1}`;
     const now = new Date().toISOString();
     const created: Beneficiary = {
-      id: `c0000000-0000-0000-0000-${benId.replace('BEN-', '').padStart(12, '0')}`,
+      id: `ben-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       beneficiary_id: benId,
       full_name: input.full_name.trim(),
       age_years: input.age_years,
@@ -228,17 +205,14 @@ class DataService {
     };
 
     this.beneficiaries = [created, ...this.beneficiaries];
-    try {
-      const raw = await AsyncStorage.getItem(STORAGE_CUSTOM_BENEFICIARIES_KEY);
-      const prev = raw ? (JSON.parse(raw) as Beneficiary[]) : [];
-      await AsyncStorage.setItem(
-        STORAGE_CUSTOM_BENEFICIARIES_KEY,
-        JSON.stringify([created, ...prev])
-      );
-    } catch {
-      // ignore
-    }
+    this.persistStorage();
     await cacheBeneficiariesLocally(this.beneficiaries).catch(() => {});
+
+    void setDoc(
+      doc(firestoreDb, FIRESTORE_COLLECTIONS.beneficiaries, created.beneficiary_id),
+      stripUndefined(created)
+    ).catch(() => {});
+
     return created;
   }
 
@@ -303,7 +277,7 @@ class DataService {
       this.dangerAlerts[existingIdx] = { ...this.dangerAlerts[existingIdx], ...alert };
     } else {
       this.dangerAlerts.unshift(alert);
-      this.auditLogs.unshift({
+      const logEntry: AuditLogEntry = {
         id: `aud-${Date.now()}`,
         actor_name: actor?.full_name || alert.asha_worker_name || 'ASHA Worker',
         actor_role: actor?.role || 'ASHA_WORKER',
@@ -312,35 +286,18 @@ class DataService {
         entity_id: alert.alert_id,
         summary: `${alert.canonical_name} (${alert.source_guideline_ref})`,
         created_at: new Date().toISOString(),
-      });
+      };
+      this.auditLogs.unshift(logEntry);
+      void setDoc(
+        doc(firestoreDb, FIRESTORE_COLLECTIONS.auditLogs, logEntry.id),
+        stripUndefined(logEntry)
+      ).catch(() => {});
     }
 
-    if (supabase && isRealSupabaseConfigured && alert.beneficiary_id) {
-      const benUuid = this.beneficiaries.find((b) => b.beneficiary_id === alert.beneficiary_id)?.id;
-      if (benUuid) {
-        supabase
-          .from('danger_alerts')
-          .upsert(
-            {
-              alert_id: alert.alert_id,
-              session_id: alert.session_id || null,
-              beneficiary_id: benUuid,
-              asha_worker_id: alert.asha_worker_id || 'b0000000-0000-0000-0000-000000000001',
-              phc_id: alert.phc_id,
-              severity: 'CRITICAL',
-              category: alert.category,
-              symptom_evidence: alert.supporting_evidence,
-              referral_instruction: alert.referral_message,
-              referral_facility_type: alert.referral_facility_type || 'PHC',
-              referral_status: 'PENDING_TRANSPORT',
-              supervisor_acknowledged: false,
-              detected_at: alert.detected_at,
-            },
-            { onConflict: 'alert_id' }
-          )
-          .then(() => {}, () => {});
-      }
-    }
+    void setDoc(
+      doc(firestoreDb, FIRESTORE_COLLECTIONS.dangerAlerts, alert.alert_id),
+      stripUndefined(alert)
+    ).catch(() => {});
 
     this.persistStorage();
   }
@@ -363,7 +320,7 @@ class DataService {
       target.referral_notes = referralNotes;
     }
 
-    this.auditLogs.unshift({
+    const logEntry: AuditLogEntry = {
       id: `aud-${Date.now()}`,
       actor_name: actor.full_name,
       actor_role: actor.role,
@@ -372,25 +329,22 @@ class DataService {
       entity_id: alertId,
       summary: `Alert ${alertId} marked ${nextStatus}`,
       created_at: new Date().toISOString(),
-    });
+    };
+    this.auditLogs.unshift(logEntry);
 
-    if (supabase && isRealSupabaseConfigured) {
-      const referralStatus =
-        nextStatus === 'resolved'
-          ? 'RESOLVED'
-          : nextStatus === 'referred'
-          ? 'EN_ROUTE'
-          : 'ARRIVED_AT_FACILITY';
-      supabase
-        .from('danger_alerts')
-        .update({
-          supervisor_acknowledged: nextStatus !== 'active',
-          acknowledged_at: target.acknowledged_at,
-          referral_status: referralStatus,
-        })
-        .eq('alert_id', alertId)
-        .then(() => {}, () => {});
-    }
+    void updateDoc(
+      doc(firestoreDb, FIRESTORE_COLLECTIONS.dangerAlerts, alertId),
+      stripUndefined({
+        status: target.status,
+        acknowledged_by: target.acknowledged_by ?? null,
+        acknowledged_at: target.acknowledged_at ?? null,
+        referral_notes: target.referral_notes ?? null,
+      })
+    ).catch(() => {});
+    void setDoc(
+      doc(firestoreDb, FIRESTORE_COLLECTIONS.auditLogs, logEntry.id),
+      stripUndefined(logEntry)
+    ).catch(() => {});
 
     this.persistStorage();
     return { ...target };
@@ -399,14 +353,26 @@ class DataService {
   recordCommittedVisit(visit: VisitDraft): void {
     if (visit.status === 'draft') return;
 
+    const visitDocId = visit.visit_id || visit.draft_id;
+    const syncedVisit: VisitDraft = {
+      ...visit,
+      sync_status: 'synced',
+      updated_at: new Date().toISOString(),
+    };
+
     const existingIdx = this.visits.findIndex(
       (v) => v.visit_id === visit.visit_id || v.idempotency_key === visit.idempotency_key
     );
     if (existingIdx >= 0) {
-      this.visits[existingIdx] = visit;
+      this.visits[existingIdx] = syncedVisit;
     } else {
-      this.visits.unshift(visit);
+      this.visits.unshift(syncedVisit);
     }
+
+    void setDoc(
+      doc(firestoreDb, FIRESTORE_COLLECTIONS.visits, visitDocId),
+      stripUndefined(syncedVisit)
+    ).catch(() => {});
 
     for (const alert of visit.danger_alerts) {
       this.registerDangerAlert(alert);
@@ -415,7 +381,7 @@ class DataService {
     visit.follow_up_actions.forEach((act, idx) => {
       const taskId = `fu_${visit.visit_id}_${idx}`;
       if (!this.followUps.some((f) => f.id === taskId)) {
-        this.followUps.unshift({
+        const fuTask: FollowUpTask = {
           id: taskId,
           beneficiary_uuid: visit.beneficiary_uuid,
           beneficiary_id: visit.beneficiary_id || 'UNASSIGNED',
@@ -430,11 +396,16 @@ class DataService {
           status: 'PENDING',
           notes: act.source_phrase || undefined,
           created_at: new Date().toISOString(),
-        });
+        };
+        this.followUps.unshift(fuTask);
+        void setDoc(
+          doc(firestoreDb, FIRESTORE_COLLECTIONS.followUpTasks, taskId),
+          stripUndefined(fuTask)
+        ).catch(() => {});
       }
     });
 
-    this.auditLogs.unshift({
+    const logEntry: AuditLogEntry = {
       id: `aud-${Date.now()}`,
       actor_name: visit.worker_name || 'ASHA Worker',
       actor_role: 'ASHA_WORKER',
@@ -443,7 +414,12 @@ class DataService {
       entity_id: visit.visit_id,
       summary: `${visit.visit_type || 'Visit'} saved for ${visit.beneficiary_name || visit.beneficiary_id || 'Beneficiary'}`,
       created_at: new Date().toISOString(),
-    });
+    };
+    this.auditLogs.unshift(logEntry);
+    void setDoc(
+      doc(firestoreDb, FIRESTORE_COLLECTIONS.auditLogs, logEntry.id),
+      stripUndefined(logEntry)
+    ).catch(() => {});
 
     this.persistStorage();
   }
@@ -453,43 +429,31 @@ class DataService {
     if (!task) return undefined;
     task.status = task.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED';
     task.completed_at = task.status === 'COMPLETED' ? new Date().toISOString() : undefined;
+
+    void updateDoc(
+      doc(firestoreDb, FIRESTORE_COLLECTIONS.followUpTasks, taskId),
+      stripUndefined({
+        status: task.status,
+        completed_at: task.completed_at ?? null,
+      })
+    ).catch(() => {});
+
     this.persistStorage();
     return { ...task };
   }
 
   subscribeToRealtimeAlerts(onNewOrUpdated: () => void): () => void {
-    const client = supabase;
-    if (!client || !isRealSupabaseConfigured) {
+    try {
+      const unsub = onSnapshot(
+        collection(firestoreDb, FIRESTORE_COLLECTIONS.dangerAlerts),
+        () => onNewOrUpdated(),
+        () => {}
+      );
+      return unsub;
+    } catch {
       return () => {};
     }
-    const channel = client
-      .channel('danger-alerts-realtime-mobile')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'danger_alerts' },
-        () => onNewOrUpdated()
-      )
-      .subscribe();
-
-    return () => {
-      client.removeChannel(channel).catch(() => {});
-    };
-  }
-}
-
-function mapBackendCategory(cat: string): BeneficiaryCategory {
-  switch (cat) {
-    case 'pregnant_woman':
-      return 'PREGNANT_WOMAN';
-    case 'postnatal_mother':
-      return 'LACTATING_MOTHER';
-    case 'newborn':
-    case 'infant':
-      return 'INFANT';
-    default:
-      return 'CHILD';
   }
 }
 
 export const dataService = new DataService();
-
