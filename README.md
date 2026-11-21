@@ -1,4 +1,4 @@
-# Sakshya ASHA — Mobile Application (React Native + Expo + Android)
+# Saakshya ASHA — Mobile Application (React Native + Expo + Android)
 
 Voice-first maternal, newborn, and immunisation field register for ASHA workers and PHC supervisors. Built with **React Native (0.74.5) + Expo (51)**, an Apple-inspired **Liquid Glass** clinical UI, **Firebase Firestore** persistence, **Android Room (`MIGRATION_1_2`)** local schema, and a native **16kHz `pcm_s16le` Android AudioRecord** pipeline connected to the production FastAPI Voice Backend (**Gnani Prisma v3.0 STT**, **Gnani Timbre v3.0 TTS**, **Gemini Extraction**, and **Deterministic NHM Danger-Sign Screening**).
 

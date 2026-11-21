@@ -1,11 +1,11 @@
-# Sakshya ASHA - Android APK Artifacts
+# Saakshya ASHA - Android APK Artifacts
 
 This directory stores standalone Android APK binaries produced by `./scripts/build-apk.sh` (or `npm run build:apk`).
 
 ## Artifact Details
 
 - **Application ID / Package**: `org.nhm.sakshya.asha`
-- **Application Name**: Sakshya ASHA
+- **Application Name**: Saakshya ASHA
 - **Version**: 1.0.0 (Version Code: 1)
 - **Target SDK**: Android 14 (API 34)
 - **Min SDK**: Android 6.0 (API 23)

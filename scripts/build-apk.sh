@@ -7,7 +7,7 @@ export ANDROID_SDK_ROOT="$ANDROID_HOME"
 export PATH="$HOME/.local/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 
 echo "=================================================="
-echo " Sakshya ASHA Mobile - Android APK Builder        "
+echo " Saakshya ASHA Mobile - Android APK Builder        "
 echo "=================================================="
 echo "Project root: $PROJECT_ROOT"
 echo "Android SDK:  $ANDROID_HOME"

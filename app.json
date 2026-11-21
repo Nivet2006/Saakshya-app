@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Sakshya ASHA",
+    "name": "Saakshya ASHA",
     "slug": "sakshya-asha-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -12,7 +12,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "org.nhm.sakshya.asha",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Sakshya ASHA needs microphone access to capture your household visit voice notes in Indic languages via Gnani Prisma STT.",
+        "NSMicrophoneUsageDescription": "Saakshya ASHA needs microphone access to capture your household visit voice notes in Indic languages via Gnani Prisma STT.",
         "UIBackgroundModes": [
           "audio"
         ]
@@ -33,7 +33,7 @@
       [
         "expo-av",
         {
-          "microphonePermission": "Sakshya ASHA needs microphone access to capture your household visit voice notes in Indic languages."
+          "microphonePermission": "Saakshya ASHA needs microphone access to capture your household visit voice notes in Indic languages."
         }
       ]
     ]

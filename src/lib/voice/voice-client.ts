@@ -433,7 +433,7 @@ export class MobileVoiceClient {
     if (permState !== 'granted') {
       const msg =
         permState === 'permanently_denied'
-          ? 'Microphone access is permanently denied. Open system Settings to enable microphone permission for Sakshya ASHA, or use Type to Backend.'
+          ? 'Microphone access is permanently denied. Open system Settings to enable microphone permission for Saakshya ASHA, or use Type to Backend.'
           : 'Microphone permission was denied. Grant microphone access to record voice visits.';
       this.callbacks.onStateChange('error');
       this.callbacks.onError('MICROPHONE_PERMISSION_DENIED', msg, true);
