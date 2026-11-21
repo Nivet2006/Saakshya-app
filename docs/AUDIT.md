@@ -97,3 +97,4 @@ Extracted directly from `tailwind.config.ts` and `src/app/globals.css`:
 - **Touch Targets & Accessibility**:
   - Minimum touch target: `48dp` (`minHeight: 48`, primary CTAs `56dp`–`64dp`)
   - High-contrast text (`>= 4.5:1`) on all glass surfaces with solid semi-opaque fallback.
+

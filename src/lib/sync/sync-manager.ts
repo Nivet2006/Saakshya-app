@@ -236,3 +236,4 @@ function mapVisitTypeToSql(visitType: VisitDraft['visit_type']): string {
 }
 
 export const syncManager = new SyncManager();
+

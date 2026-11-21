@@ -18,7 +18,6 @@ import {
   Radii,
   Shadows,
   Spacing,
-  TouchTargets,
   Typography,
 } from '@/theme/tokens';
 import type {
@@ -549,3 +548,4 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
   },
 });
+

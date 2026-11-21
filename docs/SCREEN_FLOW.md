@@ -77,3 +77,4 @@ The hero microphone button uses Apple-inspired Liquid Glass layering (`expo-blur
 ### 9. Offline Drafts & Reconnect Sync
 - Every draft update is persisted to local device storage (`AsyncStorage` outbox indexed by `draft_id` and `idempotency_key`).
 - If the network drops after extraction, the worker can still review, edit, and confirm the visit offline; it queues with `sync_status: 'pending'` and automatically syncs when connectivity returns.
+

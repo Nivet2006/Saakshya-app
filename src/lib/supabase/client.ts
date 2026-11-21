@@ -22,3 +22,4 @@ export const supabase: SupabaseClient | null = isRealSupabaseConfigured
       },
     })
   : null;
+

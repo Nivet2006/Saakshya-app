@@ -17,3 +17,4 @@
     "no-empty": ["error", { "allowEmptyCatch": true }]
   }
 }
+

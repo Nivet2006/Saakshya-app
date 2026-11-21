@@ -1580,3 +1580,4 @@ const styles = StyleSheet.create({
     color: ClinicalColors.text,
   },
 });
+

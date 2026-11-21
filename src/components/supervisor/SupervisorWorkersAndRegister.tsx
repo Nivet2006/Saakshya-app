@@ -529,3 +529,4 @@ const styles = StyleSheet.create({
     color: ClinicalColors.dangerDark,
   },
 });
+

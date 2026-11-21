@@ -4,3 +4,4 @@
 - Never bundle `GNANI_API_KEY`, `GEMINI_API_KEY`, or `SUPABASE_SERVICE_ROLE_KEY` into the mobile app; all voice STT/TTS/LLM requests go through the FastAPI backend (`/api/v1/sessions` and `/ws/voice/{session_id}`).
 - WebSocket audio contract: client sends either binary frames of 16kHz 16-bit mono signed PCM (`pcm_s16le`) or JSON `{"type": "audio_chunk", "audio_base64": "...", "encoding": "pcm_s16le", "sample_rate": 16000, "channels": 1}`.
 - Server sends `tts_audio_chunk` with `audio_base64` containing raw 16kHz 16-bit mono signed little-endian PCM (`pcm_s16le`); on mobile (`expo-av`), wrap raw PCM chunks or accumulated turn buffers in a valid 44-byte RIFF/WAVE header (`audio/wav`) for low-latency native playback, and immediately stop/unload active `Audio.Sound` on `barge_in` or `tts_cancelled`.
+- Physical device mic/speaker walkthrough requires an Android or iOS handset on the same Wi-Fi scanning `npx expo start` (documented in `docs/TEST_REPORT.md`).

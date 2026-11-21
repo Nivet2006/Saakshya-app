@@ -1,5 +1,3 @@
-import { LanguageCode } from '@/types';
-
 export interface SupportedLanguage {
   code: string;
   name: string;

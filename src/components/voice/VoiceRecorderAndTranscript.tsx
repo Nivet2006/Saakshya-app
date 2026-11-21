@@ -82,7 +82,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
   onBargeIn,
   onSendTextUtterance,
 }) => {
-  const { ui } = useTranslation(language);
+  const { ui, t } = useTranslation(language);
   const [showTextFallback, setShowTextFallback] = useState(false);
   const [typedUtterance, setTypedUtterance] = useState('');
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -323,7 +323,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
         <View accessibilityRole="alert" style={styles.permBanner}>
           <AlertCircle size={18} color={ClinicalColors.dangerDark} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.permTitle}>{ui.permissionDeniedStatus}</Text>
+            <Text style={styles.permTitle}>{t.permissionDeniedStatus}</Text>
             <Text style={styles.permDesc}>
               {micPermissionState === 'permanently_denied'
                 ? 'Microphone access is disabled in system settings. Open Settings to allow microphone capture, or use Type to Backend below.'
@@ -1183,3 +1183,4 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 });
+

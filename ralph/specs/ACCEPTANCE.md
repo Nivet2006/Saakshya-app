@@ -9,3 +9,4 @@
 - Offline visit saved as a draft and synced on reconnect.
 - No secrets in the app bundle; app talks only to the backend URL.
 - Test report separates live-verified, mocked and untested.
+

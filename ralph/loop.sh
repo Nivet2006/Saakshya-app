@@ -36,3 +36,4 @@ for i in $(seq 1 "$MAX"); do
   fi
 done
 echo "Max iterations reached."
+

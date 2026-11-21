@@ -261,8 +261,6 @@ export const SYNTHETIC_BENEFICIARIES: Beneficiary[] = [
 
 export const SYNTHETIC_DANGER_ALERTS: DangerAlert[] = [];
 
-const todayIsoDate = new Date().toISOString().split('T')[0];
-
 export const SYNTHETIC_INITIAL_VISITS: VisitDraft[] = [];
 
 export const SYNTHETIC_FOLLOW_UPS: FollowUpTask[] = [
