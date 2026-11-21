@@ -17,7 +17,6 @@ import {
   FastForward,
   Keyboard,
   Mic,
-  MicOff,
   Radio,
   RefreshCw,
   Send,
@@ -271,7 +270,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
     <GlassCard padding="lg">
       {/* Header Status Row */}
       <View style={styles.headerRow}>
-        <View style={{ flex: 1 }}>
+        <View style={{ width: '100%' }}>
           <Text style={styles.title}>{ui.step3Title}</Text>
           <Text style={styles.subtitle}>{ui.step3Subtitle}</Text>
         </View>
@@ -481,12 +480,12 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
                   ]}
                 >
                   {pttPressed ? (
-                    <Mic size={32} color={ClinicalColors.white} />
+                    <Mic size={44} color={ClinicalColors.white} />
                   ) : (
-                    <MicOff size={28} color={ClinicalColors.white} />
+                    <Mic size={40} color={ClinicalColors.white} />
                   )}
                   <Text style={styles.pttLabelText}>
-                    {pttPressed ? ui.speakingShortLabel : ui.holdToSpeak}
+                    {pttPressed ? ui.speakingShortLabel : 'Hold to Speak / Resume'}
                   </Text>
                 </Pressable>
               )}
@@ -504,16 +503,30 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
                 </Pressable>
               )}
 
-              {/* Stop Recording Button */}
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={ui.stopRecording}
-                onPress={onStopRecording}
-                style={styles.stopBtn}
-              >
-                <Square size={15} color={ClinicalColors.text} />
-                <Text style={styles.stopBtnText}>{ui.stopRecording}</Text>
-              </Pressable>
+              {/* In Hands-Free mode show Stop Recording; in Push-to-Talk show Finish & Categorise only when finger is lifted */}
+              {handsFree ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={ui.stopRecording}
+                  onPress={onStopRecording}
+                  style={styles.stopBtn}
+                >
+                  <Square size={15} color={ClinicalColors.text} />
+                  <Text style={styles.stopBtnText}>{ui.stopRecording}</Text>
+                </Pressable>
+              ) : (
+                !pttPressed && (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Finish & Categorise"
+                    onPress={onStopRecording}
+                    style={styles.finishPttBtn}
+                  >
+                    <CheckCircle2 size={16} color={ClinicalColors.primaryDark} />
+                    <Text style={styles.finishPttBtnText}>Finish &amp; Categorise</Text>
+                  </Pressable>
+                )
+              )}
             </View>
 
             {/* Real 16-Band Audio Waveform Visualizer */}
@@ -858,11 +871,11 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   startHeroBtn: {
-    minHeight: 68,
+    minHeight: 80,
     borderRadius: Radii.xxl,
     backgroundColor: ClinicalColors.primary,
     paddingHorizontal: Spacing.xxl,
-    paddingVertical: Spacing.md,
+    paddingVertical: Spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -915,24 +928,43 @@ const styles = StyleSheet.create({
     ...Shadows.dangerGlow,
   },
   pttOrb: {
-    width: 98,
-    height: 98,
-    borderRadius: 49,
+    width: 138,
+    height: 138,
+    borderRadius: 69,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    paddingHorizontal: 10,
+    gap: 6,
     ...Shadows.glassCard,
   },
   pttOrbPressed: {
     backgroundColor: ClinicalColors.danger,
+    transform: [{ scale: 1.06 }],
   },
   pttOrbIdle: {
-    backgroundColor: ClinicalColors.slate800,
+    backgroundColor: ClinicalColors.primary,
   },
   pttLabelText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
     color: ClinicalColors.white,
+    textAlign: 'center',
+  },
+  finishPttBtn: {
+    minHeight: TouchTargets.min,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Radii.lg,
+    backgroundColor: ClinicalColors.primarySoft,
+    borderWidth: 1,
+    borderColor: ClinicalColors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  finishPttBtnText: {
+    fontSize: Typography.sm,
+    fontWeight: '800',
+    color: ClinicalColors.primaryDark,
   },
   bargeInBtn: {
     minHeight: TouchTargets.min,

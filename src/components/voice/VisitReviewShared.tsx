@@ -451,7 +451,7 @@ export const VisitSummaryCard: React.FC<{
   return (
     <GlassCard padding="lg">
       <View style={styles.summaryHeader}>
-        <View style={{ flex: 1 }}>
+        <View style={{ width: '100%' }}>
           <Text style={styles.summaryTitle}>{ui.reviewCardTitle}</Text>
           <Text style={styles.summarySubtitle}>{ui.reviewCardSubtitle}</Text>
         </View>
@@ -1298,10 +1298,8 @@ const styles = StyleSheet.create({
     color: ClinicalColors.warningDark,
   },
   summaryHeader: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
     gap: Spacing.sm,
     paddingBottom: Spacing.md,
     marginBottom: Spacing.md,

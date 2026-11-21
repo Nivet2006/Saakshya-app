@@ -26,7 +26,6 @@ import {
   Users,
   X,
 } from 'lucide-react-native';
-import { OfflineSyncBadge } from '@/components/ui/ClinicalUI';
 import { useTranslation } from '@/lib/i18n/LanguageContext';
 import { PRISMA_LANGUAGES } from '@/lib/translations';
 import {
@@ -238,8 +237,6 @@ export const AppShell: React.FC<AppShellProps> = ({
         </View>
 
         <View style={styles.headerRight}>
-          <OfflineSyncBadge language={currentLanguage} />
-
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Select Language"
