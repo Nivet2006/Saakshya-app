@@ -76,10 +76,9 @@ export function getVoiceApiBaseUrl(): string {
     return configured.replace(/\/+$/, '');
   }
   if (Platform.OS === 'android') {
-    // Default LAN IP or Android emulator host loopback
-    return 'http://10.115.28.105:8000';
+    return 'https://sakshya-web-production.up.railway.app';
   }
-  return 'http://localhost:8000';
+  return 'https://sakshya-web-production.up.railway.app';
 }
 
 export function getVoiceWsBaseUrl(): string {
