@@ -288,6 +288,10 @@ export class MobileVoiceClient {
   private isRotatingSegment = false;
   private activeSound: Audio.Sound | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
+  private wsConnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectAttempts = 0;
+  private lastWsUrl: string | null = null;
 
   private activeTurnId = 0;
   private minPlayableTurnId = 0;
@@ -453,18 +457,45 @@ export class MobileVoiceClient {
     return this.sessionId;
   }
 
-  private openWebSocket(wsUrl: string): void {
+  private openWebSocket(wsUrl: string, isReconnect = false): void {
+    this.lastWsUrl = wsUrl;
+    if (this.wsConnectTimer) {
+      clearTimeout(this.wsConnectTimer);
+      this.wsConnectTimer = null;
+    }
+
     const ws = new WebSocket(wsUrl);
     this.ws = ws;
+    let opened = false;
+
+    // Guard against hanging WebSocket handshake (15s timeout)
+    this.wsConnectTimer = setTimeout(() => {
+      if (!opened && !this.isClosing && this.ws === ws) {
+        try {
+          ws.close(4000, 'Connection timeout');
+        } catch {
+          // ignore
+        }
+      }
+    }, 15000);
 
     ws.onopen = () => {
+      opened = true;
+      if (this.wsConnectTimer) {
+        clearTimeout(this.wsConnectTimer);
+        this.wsConnectTimer = null;
+      }
       if (this.isClosing) {
         ws.close(1000);
         return;
       }
+      this.reconnectAttempts = 0;
       this.callbacks.onConnectionChange?.(true, false);
-      if (this.isMicStreaming) {
+      if (this.isMicStreaming && !isReconnect) {
         void this.startRecordingSegment();
+      }
+      if (this.pingTimer) {
+        clearInterval(this.pingTimer);
       }
       this.pingTimer = setInterval(() => {
         this.sendJson({
@@ -472,7 +503,7 @@ export class MobileVoiceClient {
           type: 'ping',
           client_timestamp: new Date().toISOString(),
         });
-      }, 15000);
+      }, 12000);
     };
 
     ws.onmessage = (event) => {
@@ -486,30 +517,55 @@ export class MobileVoiceClient {
     };
 
     ws.onerror = () => {
-      if (!this.isClosing) {
-        this.callbacks.onConnectionChange?.(false, false);
-        this.callbacks.onStateChange('error');
-        this.callbacks.onError(
-          'WS_CONNECTION_ERROR',
-          'WebSocket voice connection interrupted. Tap Reconnect Session to retry.',
-          true
-        );
-      }
+      // Handled by onclose so we can attempt transparent reconnect first
     };
 
     ws.onclose = (ev) => {
+      if (this.wsConnectTimer) {
+        clearTimeout(this.wsConnectTimer);
+        this.wsConnectTimer = null;
+      }
       if (this.pingTimer) {
         clearInterval(this.pingTimer);
         this.pingTimer = null;
       }
-      this.callbacks.onConnectionChange?.(false, false);
-      if (!this.isClosing) {
-        if (ev.code === 1011) {
-          this.callbacks.onStateChange('error');
-        } else {
-          this.callbacks.onStateChange('completed');
-        }
+      if (this.isClosing) {
+        this.callbacks.onConnectionChange?.(false, false);
+        return;
       }
+
+      // Clean server close (1000) -> session completed normally
+      if (ev.code === 1000) {
+        this.callbacks.onConnectionChange?.(false, false);
+        this.callbacks.onStateChange('completed');
+        return;
+      }
+
+      // Unexpected close / timeout (e.g. 1006, 4000): auto-reconnect up to 2 times
+      if (this.reconnectAttempts < 2 && this.sessionId) {
+        this.reconnectAttempts += 1;
+        this.callbacks.onConnectionChange?.(false, true);
+        const retryUrl = `${getVoiceWsBaseUrl()}/ws/voice/${encodeURIComponent(
+          this.sessionId
+        )}?language=${encodeURIComponent(this.language)}&greet=false`;
+        const delayMs = this.reconnectAttempts * 1500;
+        this.reconnectTimer = setTimeout(() => {
+          if (!this.isClosing) {
+            this.openWebSocket(retryUrl, true);
+          }
+        }, delayMs);
+        return;
+      }
+
+      this.callbacks.onConnectionChange?.(false, false);
+      this.callbacks.onStateChange('error');
+      this.callbacks.onError(
+        ev.code === 4000 ? 'SESSION_TIMEOUT' : 'WS_CONNECTION_ERROR',
+        ev.code === 4000
+          ? 'Voice session timed out while connecting. Tap Reconnect Session to retry.'
+          : 'Voice session disconnected. Tap Reconnect Session to resume.',
+        true
+      );
     };
   }
 
@@ -1192,6 +1248,14 @@ export class MobileVoiceClient {
   }
 
   private closeSocketOnly(): void {
+    if (this.wsConnectTimer) {
+      clearTimeout(this.wsConnectTimer);
+      this.wsConnectTimer = null;
+    }
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (this.pingTimer) {
       clearInterval(this.pingTimer);
       this.pingTimer = null;

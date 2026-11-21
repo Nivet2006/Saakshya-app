@@ -658,6 +658,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     flex: 1,
+    minWidth: 0,
   },
   iconBtn: {
     minWidth: TouchTargets.min,
@@ -681,11 +682,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    minWidth: 0,
   },
   appTitle: {
     fontSize: Typography.sm,
     fontWeight: '800',
     color: ClinicalColors.text,
+    flexShrink: 1,
   },
   apiDotBadge: {
     flexDirection: 'row',

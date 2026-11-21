@@ -335,7 +335,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           {showServerConfig && (
             <View style={styles.serverConfigBox}>
               <Text style={styles.serverConfigHelp}>
-                Set the FastAPI Voice Backend URL (e.g. http://10.178.123.170:8000 for LAN or your
+                Set the FastAPI Voice Backend URL (e.g. http://10.115.28.105:8000 for LAN or your
                 deployed HTTPS backend URL). API keys stay strictly on the backend.
               </Text>
               <TextInput
@@ -343,7 +343,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 autoCapitalize="none"
                 value={backendUrlDraft}
                 onChangeText={setBackendUrlDraft}
-                placeholder="http://10.178.123.170:8000"
+                placeholder="http://10.115.28.105:8000"
                 placeholderTextColor={ClinicalColors.textMuted}
                 style={styles.input}
               />

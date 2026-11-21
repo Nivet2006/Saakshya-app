@@ -77,7 +77,7 @@ export function getVoiceApiBaseUrl(): string {
   }
   if (Platform.OS === 'android') {
     // Default LAN IP or Android emulator host loopback
-    return 'http://10.178.123.170:8000';
+    return 'http://10.115.28.105:8000';
   }
   return 'http://localhost:8000';
 }
@@ -103,7 +103,7 @@ export function getVoiceWsBaseUrl(): string {
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const baseUrl = getVoiceApiBaseUrl();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
+  const timeout = setTimeout(() => controller.abort(), 20000);
 
   try {
     const res = await fetch(`${baseUrl}${path}`, {
@@ -132,8 +132,16 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     return json as T;
   } catch (err) {
     if (err instanceof FastApiError) throw err;
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new FastApiError(
+        0,
+        'REQUEST_TIMEOUT',
+        `Connection to ${baseUrl} timed out after 20s. Check your internet or Backend URL.`,
+        true
+      );
+    }
     const msg = err instanceof Error ? err.message : 'Network error reaching voice backend';
-    throw new FastApiError(0, 'NETWORK_UNREACHABLE', msg, true);
+    throw new FastApiError(0, 'NETWORK_UNREACHABLE', `${msg} (${baseUrl})`, true);
   } finally {
     clearTimeout(timeout);
   }
