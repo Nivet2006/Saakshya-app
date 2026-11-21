@@ -25,3 +25,4 @@ export const FIRESTORE_COLLECTIONS = {
   auditLogs: 'audit_logs',
   workers: 'workers',
 } as const;
+
